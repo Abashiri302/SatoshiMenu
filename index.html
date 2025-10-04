@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satoshi Menu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #fffaf0;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #ff6600;
+            font-weight: 700;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        #description {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        #menu {
+            margin-bottom: 30px;
+        }
+        .category {
+            margin-bottom: 40px;
+        }
+        .category h2 {
+            color: #ff6600;
+            font-size: 2em;
+            border-bottom: 3px solid #ff6600;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        td {
+            padding: 10px 0;
+            border-bottom: 1px dashed #ffdab9;
+            vertical-align: top;
+        }
+        td:first-child {
+            width: 60%;
+        }
+        td.price {
+            width: 30%;
+            text-align: right;
+            color: #ff6600;
+            font-weight: 600;
+        }
+        td.delete {
+            width: 10%;
+            text-align: center;
+        }
+        .item-name {
+            font-weight: 600;
+        }
+        button {
+            background-color: #ff6600;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #e65c00;
+        }
+        button.small {
+            padding: 5px 10px;
+            font-size: 0.8em;
+        }
+        #controls {
+            text-align: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            display: flex;
+            justify-content: center;
+        }
+        #exit-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            display: none;
+            z-index: 1000;
+        }
+        .view-mode #controls, .view-mode .instructions {
+            display: none;
+        }
+        .view-mode #exit-btn {
+            display: block;
+        }
+        .view-mode td.delete {
+            display: none;
+        }
+        p.instructions {
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .category h2 {
+                font-size: 1.5em;
+            }
+            td:first-child {
+                width: 50%;
+            }
+            td.price {
+                width: 40%;
+            }
+            td.delete {
+                width: 10%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1 id="restaurant-name">Satoshi Menu</h1>
+    <p id="description"></p>
+    <div id="menu"></div>
+    <div id="controls">
+        <button onclick="setRestaurantName()">Set Restaurant Name</button>
+        <button onclick="setDescription()">Set Description</button>
+        <button onclick="addItem()">Add Menu Item</button>
+        <button onclick="setCurrency()">Set Currency</button>
+        <button onclick="refreshMenu()">Refresh Prices</button>
+        <button onclick="clearMenu()">Clear Menu</button>
+        <button onclick="saveOffline()">Save Offline (Download)</button>
+        <button onclick="loadOffline()">Load Offline (Upload)</button>
+        <button onclick="enterFullScreen()">Enter Full Screen</button>
+        <button onclick="generateCustomerLink()">Generate Customer Link</button>
+    </div>
+    <div id="exit-btn">
+        <button class="small" onclick="exitFullScreen()">Exit Full Screen</button>
+    </div>
+    <p class="instructions">To share with customers: Use "Generate Customer Link" to get a view-only URL. The satoshi prices will update in real-time when refreshed. For display on a screen, use the Full Screen button or press F11. Use save/load for offline backups.</p>
+    <script>
+        let menuData = {
+            currency: 'USD',
+            items: [],
+            restaurantName: '',
+            description: ''
+        };
+        let isCustomerView = false;
+        const commonCategories = ['Appetizers', 'Main Dishes', 'Beverages', 'Desserts'];
+
+        // Load data from URL or localStorage on page load
+        function loadData() {
+            const params = new URLSearchParams(window.location.search);
+            let base64 = params.get('data');
+            if (!base64) {
+                // Legacy format check
+                const legacyBase64 = window.location.search.slice(1);
+                if (legacyBase64 && !legacyBase64.includes('=')) {
+                    base64 = legacyBase64;
+                }
+            }
+            if (base64) {
+                try {
+                    const json = atob(base64);
+                    menuData = JSON.parse(json);
+                } catch (e) {
+                    console.error('Invalid menu data');
+                }
+            } else {
+                // Fallback to localStorage
+                const stored = localStorage.getItem('satoshiMenuData');
+                if (stored) {
+                    try {
+                        menuData = JSON.parse(stored);
+                    } catch (e) {
+                        console.error('Invalid menu data in localStorage');
+                    }
+                }
+            }
+            isCustomerView = params.get('view') === '1';
+            if (isCustomerView) {
+                document.body.classList.add('view-mode');
+            }
+        }
+
+        // Update URL with encoded menu data without reloading
+        function updateUrl() {
+            const json = JSON.stringify(menuData);
+            const base64 = btoa(json);
+            const params = new URLSearchParams();
+            params.set('data', base64);
+            if (document.body.classList.contains('view-mode')) {
+                params.set('view', '1');
+            }
+            history.pushState({}, '', '?' + params.toString());
+        }
+
+        // Auto-save to localStorage on changes
+        function autoSave() {
+            localStorage.setItem('satoshiMenuData', JSON.stringify(menuData));
+        }
+
+        // Save offline as JSON download
+        function saveOffline() {
+            const json = JSON.stringify(menuData);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (menuData.restaurantName || 'satoshi') + '-menu.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            alert('Menu downloaded as JSON for offline backup!');
+        }
+
+        // Load offline from JSON upload
+        function loadOffline() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                        try {
+                            menuData = JSON.parse(ev.target.result);
+                            updateUrl();
+                            autoSave();
+                            updateHeader();
+                            renderMenu();
+                            alert('Menu loaded successfully!');
+                        } catch (err) {
+                            alert('Invalid file: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        }
+
+        // Generate customer view link and copy to clipboard
+        function generateCustomerLink() {
+            const json = JSON.stringify(menuData);
+            const base64 = btoa(json);
+            const viewUrl = location.origin + location.pathname + '?data=' + base64 + '&view=1';
+            navigator.clipboard.writeText(viewUrl).then(() => {
+                alert('Customer view link copied to clipboard!\n' + viewUrl + '\n\nCustomers can view the menu without edit options. They can press F11 for full screen.');
+            }).catch(err => {
+                alert('Failed to copy: ' + err + '\nLink: ' + viewUrl);
+            });
+        }
+
+        // Fetch current BTC price in the selected currency with retry
+        async function getBtcPrice() {
+            let attempts = 0;
+            const maxAttempts = 3;
+            while (attempts < maxAttempts) {
+                try {
+                    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${menuData.currency.toLowerCase()}`);
+                    if (!res.ok) throw new Error('API response not ok');
+                    const data = await res.json();
+                    return data.bitcoin[menuData.currency.toLowerCase()];
+                } catch (e) {
+                    console.error('Error fetching BTC price:', e);
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Update header
+        function updateHeader() {
+            document.getElementById('restaurant-name').textContent = menuData.restaurantName || 'Satoshi Menu';
+            const descElem = document.getElementById('description');
+            descElem.textContent = menuData.description || '';
+            descElem.style.display = menuData.description ? 'block' : 'none';
+        }
+
+        // Render the menu grouped by categories using tables
+        async function renderMenu() {
+            let btcPrice = await getBtcPrice();
+            if (!btcPrice) {
+                if (!document.body.classList.contains('view-mode')) {
+                    alert('Unable to fetch current Bitcoin price after retries. Displaying without satoshi values.');
+                }
+                btcPrice = null;
+            }
+            const menuDiv = document.getElementById('menu');
+            menuDiv.innerHTML = '';
+            if (menuData.items.length === 0) {
+                menuDiv.innerHTML = '<p>No menu items added yet.</p>';
+                return;
+            }
+            const isViewMode = document.body.classList.contains('view-mode');
+            // Group items by category
+            const categories = {};
+            menuData.items.forEach(item => {
+                const cat = item.category || 'Uncategorized';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(item);
+            });
+            Object.keys(categories).forEach(cat => {
+                const catDiv = document.createElement('div');
+                catDiv.className = 'category';
+                const h2 = document.createElement('h2');
+                h2.textContent = cat;
+                catDiv.appendChild(h2);
+                const table = document.createElement('table');
+                categories[cat].forEach(item => {
+                    const sats = btcPrice ? Math.round(item.fiat / btcPrice * 100000000) : '?';
+                    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: menuData.currency });
+                    const fiatFormatted = formatter.format(item.fiat);
+                    const priceText = `${fiatFormatted} | ${sats} sats`;
+                    const tr = document.createElement('tr');
+                    let html = `<td class="item-name">${item.name}</td><td class="price">${priceText}</td>`;
+                    if (!isViewMode) {
+                        html += `<td class="delete"><button class="small" onclick="deleteItem('${item.name.replace(/'/g, "\\'")}', '${item.category.replace(/'/g, "\\'")}')">Delete</button></td>`;
+                    }
+                    tr.innerHTML = html;
+                    table.appendChild(tr);
+                });
+                catDiv.appendChild(table);
+                menuDiv.appendChild(catDiv);
+            });
+        }
+
+        // Delete an item
+        function deleteItem(name, category) {
+            if (confirm(`Delete ${name} from ${category}?`)) {
+                menuData.items = menuData.items.filter(item => !(item.name === name && item.category === category));
+                updateUrl();
+                autoSave();
+                renderMenu();
+            }
+        }
+
+        // Set restaurant name
+        function setRestaurantName() {
+            const name = prompt('Enter restaurant name:');
+            if (name) {
+                menuData.restaurantName = name;
+                updateUrl();
+                autoSave();
+                updateHeader();
+            }
+        }
+
+        // Set description
+        function setDescription() {
+            const desc = prompt('Enter restaurant description:');
+            if (desc) {
+                menuData.description = desc;
+                updateUrl();
+                autoSave();
+                updateHeader();
+            }
+        }
+
+        // Add a new item
+        function addItem() {
+            const name = prompt('Enter item name:');
+            const fiatStr = prompt('Enter price in ' + menuData.currency + ' (e.g., 12.99):');
+            const fiat = parseFloat(fiatStr);
+            const categoryPrompt = `Enter category (common options: ${commonCategories.join(', ')}, or type your own):`;
+            const category = prompt(categoryPrompt);
+            if (name && !isNaN(fiat) && fiat > 0) {
+                menuData.items.push({ name, fiat, category });
+                updateUrl();
+                autoSave();
+                renderMenu();
+            } else {
+                alert('Invalid input. Please enter a valid name and positive number for price.');
+            }
+        }
+
+        // Set currency
+        function setCurrency() {
+            const currency = prompt('Enter currency code (e.g., USD, EUR, GBP, AUD, CAD):').toUpperCase();
+            if (currency && currency.length === 3) {
+                menuData.currency = currency;
+                updateUrl();
+                autoSave();
+                renderMenu();
+            } else {
+                alert('Invalid currency code. Please enter a 3-letter code like USD.');
+            }
+        }
+
+        // Refresh menu prices
+        function refreshMenu() {
+            renderMenu();
+        }
+
+        // Clear all items
+        function clearMenu() {
+            if (confirm('Are you sure you want to clear the menu?')) {
+                menuData.items = [];
+                menuData.restaurantName = '';
+                menuData.description = '';
+                updateUrl();
+                localStorage.removeItem('satoshiMenuData');
+                updateHeader();
+                renderMenu();
+            }
+        }
+
+        // Enter full screen (view mode + fullscreen)
+        function enterFullScreen() {
+            document.body.classList.add('view-mode');
+            document.documentElement.requestFullscreen().catch(err => {
+                console.error(`Error entering full screen: ${err.message}`);
+            });
+            renderMenu();
+            updateUrl();
+        }
+
+        // Exit full screen
+        function exitFullScreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+            if (!isCustomerView) {
+                document.body.classList.remove('view-mode');
+            }
+            renderMenu();
+            updateUrl();
+        }
+
+        // Listen for full screen changes
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                if (!isCustomerView) {
+                    document.body.classList.remove('view-mode');
+                }
+                renderMenu();
+                updateUrl();
+            }
+        });
+
+        // Initial load and render
+        loadData();
+        updateHeader();
+        renderMenu();
+    </script>
+</body>
+</html>
